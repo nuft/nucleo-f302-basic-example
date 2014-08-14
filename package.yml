@@ -1,0 +1,7 @@
+target.arm:
+    - src/main.c
+    - src/runtime.c
+    - CMSIS/include/system_stm32f30x.c
+
+templates:
+    Makefile.jinja: Makefile
