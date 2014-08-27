@@ -4,3 +4,9 @@
 [submodule "libopencm3"]
 	path = libopencm3
 	url = https://github.com/libopencm3/libopencm3.git
+[submodule "uCOS-III"]
+	path = uCOS-III
+	url = https://github.com/cvra/uCOS-III.git
+[submodule "platform-abstraction"]
+	path = platform-abstraction
+	url = https://github.com/cvra/platform-abstraction.git
