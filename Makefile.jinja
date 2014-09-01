@@ -11,13 +11,20 @@ PRINT = @printf "$(COLOR)%s$(COLOR_CLEAR)\n"
 {% block cflags %}
 INCDIR += -I./CMSIS/include
 INCDIR += -I./libopencm3/include
+INCDIR += -I./uCOS-III/Source
+INCDIR += -I./uCOS-III/Port
+INCDIR += -I./uCOS-III/Cfg
 
 # C compiler flags
 CFLAGS = -Wall -Werror -Os
 CFLAGS += -mthumb -mcpu=cortex-m4 -march=armv7e-m -mfloat-abi=hard -mfpu=fpv4-sp-d16
 CFLAGS += -fno-common -ffunction-sections -fdata-sections -fomit-frame-pointer
-CFLAGS += -MD -DSTM32F3
+CFLAGS += -MD -DSTM32F3 -DCPU_CFG_CPU_CORE_FREQ=64000000 -g
 CFLAGS += $(INCDIR)
+
+ASMFLAGS = $(CFLAGS)
+
+CPPFLAGS += $(CFLAGS)
 {% endblock %}
 
 {% block ldflags %}
@@ -44,8 +51,15 @@ $(PROJNAME).elf: $(OBJS)
 {% block c_compile %}
 %.o: %.c Makefile
 	$(PRINT) "> compiling $<"
-	$(Q) $(CC) -c $(CFLAGS) ${<} -o ${@}
+	$(Q) $(CC) $(CFLAGS) -c ${<} -o ${@}
 
+%.o: %.s Makefile
+	$(PRINT) "> assembling $<"
+	$(Q) $(AS) $(ASMFLAGS) -c ${<} -o ${@}
+
+%.o: %.cpp Makefile
+	$(PRINT) "> compiling $<"
+	$(Q) $(CPP) $(CPPFLAGS) -c ${<} -o ${@}
 
 -include $(OBJS:.o=.d)
 {% endblock %}

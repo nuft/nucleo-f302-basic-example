@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <platform-abstraction/threading.h>
+#include <platform-abstraction/semaphore.h>
+
 void uart2_init(void)
 {
     rcc_periph_clock_enable(RCC_GPIOA);
@@ -61,9 +64,90 @@ void delay(unsigned int n)
     }
 }
 
+void led_toggle(void)
+{
+    gpio_toggle(GPIOB, GPIO13);
+}
+
+
+#define FPCCR (*((volatile uint32_t *)0xE000EF34))
+#define CPACR (*((volatile uint32_t *)0xE000ED88))
+
+void fpu_config(void)
+{
+    // Enable the Floating-point coprocessor (CP10 and CP11 to full access)
+    CPACR |= (0x03<<(2*10)|(0x03<<(2*11)));
+
+    __asm__ volatile (
+        "dsb \n\t"  /* wait for store to complete */
+        "isb \n\t"  /* reset pipeline, FPU is now enabled */
+        :::);
+
+    uint32_t fpccr = 0;
+    // Disable automatic state preservation of FP state
+    fpccr &= ~(1<<31);
+    // Enable Lazy context save of FP state
+    // -> whole fpu context is saved by ucos
+    fpccr |= (1<<30);
+
+    FPCCR = fpccr;
+}
+
+semaphore_t mysem;
+
+os_thread_t signal_thread;
+THREAD_STACK signal_stack[512];
+
+void signal_main(void *context)
+{
+    (void) context;
+
+    printf("Signal Thread\n");
+
+    while (1) {
+        // poll user-button state
+        while (gpio_get(GPIOC, GPIO13) != 0) {
+            os_thread_sleep_us(10000);
+        }
+        while (gpio_get(GPIOC, GPIO13) == 0) {
+            os_thread_sleep_us(10000);
+        }
+
+        // signal mythread to toggle user-LED
+        os_semaphore_release(&mysem);
+    }
+}
+
+os_thread_t mythread;
+THREAD_STACK mystack[1024];
+
+void mythread_main(void *context)
+{
+    (void) context;
+
+    printf("My Thread\n");
+
+    os_semaphore_init(&mysem, 0);
+
+    printf("Create Signal Thread\n");
+
+    os_thread_create(&signal_thread, signal_main, signal_stack, sizeof(signal_stack), "Signal Thread", 1, NULL);
+
+    while (1) {
+        os_semaphore_take(&mysem);
+
+        // toggle user-LED
+        gpio_toggle(GPIOB, GPIO13);
+
+        printf("Sieg!\n");
+    }
+}
+
 int main(void)
 {
     rcc_clock_setup_hsi(&hsi_8mhz[CLOCK_64MHZ]);
+
+    fpu_config();
 
     uart2_init();
 
@@ -75,15 +159,14 @@ int main(void)
     rcc_periph_clock_enable(RCC_GPIOC);
     gpio_mode_setup(GPIOC, GPIO_MODE_INPUT, GPIO_PUPD_NONE, GPIO13);
 
-    while (1) {
-        // toggle user-LED
-        gpio_toggle(GPIOB, GPIO13);
+    os_init();
 
-        printf("Sieg!\n");
+    // printf can only be used after os_run()
+    uart_write("Create My Thread\n", 17);
 
-        // wait for user-button to be pressed
-        while (gpio_get(GPIOC, GPIO13) != 0);
-        delay(1000);
-        while (gpio_get(GPIOC, GPIO13) == 0);
-    }
+    os_thread_create(&mythread, mythread_main, mystack, sizeof(mystack), "My Thread", 0, NULL);
+
+    os_run();
+
+    while (1);
 }

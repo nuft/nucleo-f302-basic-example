@@ -6,7 +6,7 @@ parts of this code are from http://stm32discovery.nano-age.co.uk/open-source-dev
 #include <sys/stat.h>
 #include <sys/times.h>
 #include <sys/unistd.h>
-#include <mcu.h>
+#include <platform-abstraction/panic.h>
 
 int uart_write(const char *p, int len);
 int uart_read(char *p, int len);
@@ -121,28 +121,28 @@ int _lseek(int file, int ptr, int dir) {
  Malloc and related functions depend on this
  */
 caddr_t _sbrk(int incr) {
-
-    extern char _ebss; // Defined by the linker
-    static char *heap_end;
+    extern char _sheap; // Defined by the linker
+    extern char _eheap;
+    static char *heap_end = 0;
     char *prev_heap_end;
 
     if (heap_end == 0) {
-        heap_end = &_ebss;
+        heap_end = &_sheap;
     }
     prev_heap_end = heap_end;
 
-    char * stack = (char*) __get_MSP();
-     if (heap_end + incr >  stack)
-     {
-         _write (STDERR_FILENO, "Heap and stack collision\n", 25);
-         errno = ENOMEM;
-         return  (caddr_t) -1;
-         //abort ();
-     }
+
+    if (heap_end + incr > &_eheap)
+    {
+        // _write(STDERR_FILENO, "Heap is full\n", 13);
+        PANIC("Heap is full\n");
+        errno = ENOMEM;
+        return (caddr_t) -1;
+        // abort();
+    }
 
     heap_end += incr;
     return (caddr_t) prev_heap_end;
-
 }
 
 /*
