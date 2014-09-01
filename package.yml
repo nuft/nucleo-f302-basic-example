@@ -1,3 +1,7 @@
+depends:
+    - uCOS-III
+    - platform-abstraction
+
 target.arm:
     - src/main.c
     - src/runtime.c
