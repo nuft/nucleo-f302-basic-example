@@ -161,8 +161,7 @@ int main(void)
 
     os_init();
 
-    // printf can only be used after os_run()
-    uart_write("Create My Thread\n", 17);
+    printf("Create \"My Thread\"\n");
 
     os_thread_create(&mythread, mythread_main, mystack, sizeof(mystack), "My Thread", 0, NULL);
 
