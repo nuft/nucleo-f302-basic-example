@@ -114,7 +114,7 @@ void signal_main(void *context)
         }
 
         // signal mythread to toggle user-LED
-        os_semaphore_release(&mysem);
+        os_semaphore_signal(&mysem);
     }
 }
 
@@ -134,7 +134,7 @@ void mythread_main(void *context)
     os_thread_create(&signal_thread, signal_main, signal_stack, sizeof(signal_stack), "Signal Thread", 1, NULL);
 
     while (1) {
-        os_semaphore_take(&mysem);
+        os_semaphore_wait(&mysem);
 
         // toggle user-LED
         gpio_toggle(GPIOB, GPIO13);
