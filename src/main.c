@@ -4,6 +4,7 @@
 #include <libopencm3/stm32/usart.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "flash_writer.h"
 
 void uart2_init(void)
 {
@@ -75,11 +76,58 @@ int main(void)
     rcc_periph_clock_enable(RCC_GPIOC);
     gpio_mode_setup(GPIOC, GPIO_MODE_INPUT, GPIO_PUPD_NONE, GPIO13);
 
+    printf("[START]\n");
+
+    printf("security delay, please wait\n");
+
+    int i = 42;
+    while (i-- > 0) {
+        delay(1000000);
+        uart_putc('.');
+    }
+    uart_putc('\n');
+
+
+    printf("start flash writer test\n");
+
+    flash_writer_start();
+
+    uint32_t page_number = 31;
+
+    flash_writer_page_erase(page_number);
+
+    uint32_t page_address = flash_writer_page_address(page_number);
+
+    uint32_t word = 'x' | ('k' << 8) | ('c' << 16) | ('d' << 24);
+
+    int ret;
+    ret = flash_writer_write_word(page_address, word);
+    ret |= flash_writer_write_word(page_address + 4, '\0');
+
+    flash_writer_finish();
+
+    uint32_t *flash = (uint32_t *) page_address;
+
+    bool success = true;
+
+    if (*flash != word || ret != 0) {
+        success = false;
+    }
+
+    printf("flash %p: %s\n", flash, (const char *)flash);
+
+    if (!success) {
+        while (1) {
+            printf("fail\n");
+            delay(10000000);
+        }
+    }
+
     while (1) {
         // toggle user-LED
         gpio_toggle(GPIOB, GPIO13);
 
-        printf("Sieg!\n");
+        printf("success!\n");
 
         // wait for user-button to be pressed
         while (gpio_get(GPIOC, GPIO13) != 0);
