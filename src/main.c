@@ -4,6 +4,7 @@
 #include <libopencm3/stm32/usart.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include "flash_writer.h"
 
 void uart2_init(void)
@@ -90,27 +91,26 @@ int main(void)
 
     printf("start flash writer test\n");
 
+    static char mydata[2048] = {0};
+
+    snprintf(mydata, sizeof(mydata), "hello world!\n");
+
     flash_writer_unlock();
 
     uint16_t page_number = 31;
 
     flash_writer_page_erase(page_number);
 
-    void *page_address = flash_writer_page_address(page_number);
+    flash_writer_page_write(page_number, (uint8_t *) mydata);
 
-    uint32_t word = 'x' | ('k' << 8) | ('c' << 16) | ('d' << 24);
-
-    int ret;
-    ret = flash_writer_word_write(page_address, word);
-    ret |= flash_writer_word_write((uint32_t *)page_address + 1, '\0');
+    const char *flash = (const char *) flash_writer_page_address(page_number);
 
     flash_writer_lock();
 
-    uint32_t *flash = (uint32_t *) page_address;
 
     bool success = true;
 
-    if (*flash != word || ret != 0) {
+    if (strcmp(flash, mydata)) {
         success = false;
     }
 
