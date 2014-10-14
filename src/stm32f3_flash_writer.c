@@ -1,5 +1,4 @@
 
-#include <stdlib.h>
 #include <libopencm3/stm32/flash.h>
 #include "flash_writer.h"
 
@@ -9,21 +8,32 @@
 #define STM32F3_FLASH_LAST_PAGE 31
 #define FLASH_BASE
 
+void flash_writer_unlock(void)
+{
+    flash_unlock();
+}
 
-/** get number of available pages */
-uint32_t flash_writer_num_pages(void)
+void flash_writer_lock(void)
+{
+    flash_lock();
+}
+
+uint16_t flash_writer_num_pages(void)
 {
     return STM32F3_FLASH_LAST_PAGE + 1;
 }
 
-/** get info about start address and size of page */
-bool flash_writer_page_info(uint32_t page, void *addr, size_t *size)
+bool flash_writer_page_info(uint16_t page, void **addr, size_t *size)
 {
+    if (page > STM32F3_FLASH_LAST_PAGE) {
+        return false;
+    }
+    *addr = (void *)(0x08000000 + page * STM32F3_FLASH_PAGE_SIZE);
+    *size = STM32F3_FLASH_PAGE_SIZE;
     return true;
 }
 
-/** get flash page size, returns 0 if page does not exist */
-size_t flash_writer_page_size(uint32_t page)
+size_t flash_writer_page_size(uint16_t page)
 {
     if (page > STM32F3_FLASH_LAST_PAGE) {
         return 0;
@@ -31,19 +41,19 @@ size_t flash_writer_page_size(uint32_t page)
     return STM32F3_FLASH_PAGE_SIZE;
 }
 
-uint32_t flash_writer_page_address(uint32_t page)
+void *flash_writer_page_address(uint16_t page)
 {
-    return 0x08000000 + page * STM32F3_FLASH_PAGE_SIZE;
+    return (void *)(0x08000000 + page * STM32F3_FLASH_PAGE_SIZE);
 }
 
 
-/* implement missing libopencm3 flash function */
-static inline void flash_erase_page(uint32_t page_address)
+/* implement missing libopencm3 flash erase function */
+static void flash_erase_page(void *page_address)
 {
     flash_wait_for_last_operation();
 
     FLASH_CR |= FLASH_CR_PER;
-    FLASH_AR = page_address;
+    FLASH_AR = (uint32_t) page_address;
     FLASH_CR |= FLASH_CR_STRT;
 
     flash_wait_for_last_operation();
@@ -51,15 +61,45 @@ static inline void flash_erase_page(uint32_t page_address)
     FLASH_CR &= ~FLASH_CR_PER;
 }
 
-/* implement missing libopencm3 flash function */
+void flash_writer_page_erase(uint16_t page)
+{
+    void *addr;
+
+    if (page > STM32F3_FLASH_LAST_PAGE) {
+        return;
+    }
+
+
+    addr = flash_writer_page_address(page);
+
+    bool erased = true;
+
+    size_t size = flash_writer_page_size(page);
+
+    uint32_t *p = (uint32_t *) addr;
+    while (p < p + size) {
+        if (*p != 0xffffffff) {
+            erased = false;
+            break;
+        }
+        p++;
+    }
+
+    /* only erase page, if necessary as a security mechanism */
+    if (!erased) {
+        flash_erase_page(addr);
+    }
+}
+
+/* implement missing libopencm3 flash program function */
 /* returns 0 if succeeded */
-int flash_program_half_word(uint32_t address, uint16_t data)
+static int flash_program_half_word(void *address, uint16_t data)
 {
     flash_wait_for_last_operation();
 
     FLASH_CR |= FLASH_CR_PG;
 
-    /* perform half-word writ */
+    /* perform half-word write */
     *(uint16_t *)address = data;
 
     flash_wait_for_last_operation();
@@ -67,7 +107,7 @@ int flash_program_half_word(uint32_t address, uint16_t data)
     FLASH_CR &= ~FLASH_CR_PG;
 
     int ret = 1;
-    if (FLASH_SR & FLASH_SR_EOP) {
+    if (FLASH_SR & FLASH_SR_EOP && (FLASH_SR & FLASH_SR_PGPERR) == 0) {
         /* programming succeded */
         FLASH_SR |= FLASH_SR_EOP; /* reset flag by writing 1 */
         ret = 0;
@@ -75,22 +115,7 @@ int flash_program_half_word(uint32_t address, uint16_t data)
     return ret;
 }
 
-void flash_writer_page_erase(uint32_t page)
-{
-    uint32_t addr;
-
-    if (page > STM32F3_FLASH_LAST_PAGE) {
-        return;
-    }
-
-    // check if page is already erased? (all set to 0xffffffff)
-
-    addr = flash_writer_page_address(page);
-
-    flash_erase_page(addr);
-}
-
-int flash_writer_write_word(uint32_t address, uint32_t word)
+int flash_writer_word_write(void *address, uint32_t word)
 {
     int ret;
 
@@ -99,28 +124,38 @@ int flash_writer_write_word(uint32_t address, uint32_t word)
         return ret;
     }
 
-    ret = flash_program_half_word(address + 2, (uint16_t) (word >> 16));
+    address = (void *)((uint16_t *)address + 1);
+
+    ret = flash_program_half_word(address, (uint16_t) (word >> 16));
 
     return ret;
 }
 
-void flash_writer_page_write(uint32_t page, uint8_t *data, size_t len)
+void flash_writer_page_write(uint16_t page, uint8_t *data)
 {
     if (page > STM32F3_FLASH_LAST_PAGE) {
         return;
     }
 
-    // uint16_t *flash = (uint16_t *)flash_writer_page_address(page);
+    uint16_t *wdata = (uint16_t *) data;
+    uint16_t *flash = (uint16_t *) flash_writer_page_address(page);
 
-    // todo
-}
+    size_t size = flash_writer_page_size(page);
 
-void flash_writer_start(void)
-{
-    flash_unlock();
-}
+    uint16_t *page_end = (uint16_t *)((uint8_t *)flash + size);
 
-void flash_writer_finish(void)
-{
-    flash_lock();
+    flash_wait_for_last_operation();
+
+    while (flash < page_end) {
+        FLASH_CR |= FLASH_CR_PG;
+
+        /* perform half-word write */
+        *flash++ = *wdata++;
+
+        flash_wait_for_last_operation();
+    }
+
+    /* reset flags */
+    FLASH_CR &= ~FLASH_CR_PG;
+    FLASH_SR |= FLASH_SR_EOP;
 }
