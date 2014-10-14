@@ -93,18 +93,23 @@ int main(void)
 
     static char mydata[2048] = {0};
 
+    /* fill buffer with data */
     snprintf(mydata, sizeof(mydata), "hello world!\n");
 
+    /* unlock flash for programming */
     flash_writer_unlock();
 
     uint16_t page_number = 31;
 
+    /* erase the page */
     flash_writer_page_erase(page_number);
 
+    /* write buffer to flash */
     flash_writer_page_write(page_number, (uint8_t *) mydata);
 
     const char *flash = (const char *) flash_writer_page_address(page_number);
 
+    /* lock flash again */
     flash_writer_lock();
 
 
