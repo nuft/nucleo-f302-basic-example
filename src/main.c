@@ -115,7 +115,7 @@ int main(void)
 
     bool success = true;
 
-    if (strcmp(flash, mydata)) {
+    if (memcmp(flash, mydata, sizeof(mydata))) {
         success = false;
     }
 
