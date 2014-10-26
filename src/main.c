@@ -100,14 +100,14 @@ int main(void)
     flash_writer_unlock();
 
     uint16_t page_number = 31;
+    uint32_t page = 0x08000000 + 0x800 * page_number;
+    char *flash = (char *) page;
 
     /* erase the page */
-    flash_writer_page_erase(page_number);
+    flash_writer_page_erase((void *)page);
 
     /* write buffer to flash */
-    flash_writer_page_write(page_number, (uint8_t *) mydata);
-
-    const char *flash = (const char *) flash_writer_page_address(page_number);
+    flash_writer_page_write((void *)page, (uint8_t *) mydata, strlen(mydata));
 
     /* lock flash again */
     flash_writer_lock();
@@ -115,16 +115,15 @@ int main(void)
 
     bool success = true;
 
-    if (memcmp(flash, mydata, sizeof(mydata))) {
+    if (memcmp(flash, mydata, strlen(mydata))) {
         success = false;
     }
-
-    printf("flash %p: %s\n", flash, (const char *)flash);
 
     if (!success) {
         while (1) {
             printf("fail\n");
-            delay(10000000);
+            delay(1000000);
+            gpio_toggle(GPIOB, GPIO13);
         }
     }
 
